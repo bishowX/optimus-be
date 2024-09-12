@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 )
@@ -24,6 +25,30 @@ type Token struct {
 
 var users []User = []User{}
 var tokens map[string]Token = make(map[string]Token)
+
+func loadUsersAndTokens() {
+	userFile, err := os.Open("users.json")
+	if err == nil {
+		defer userFile.Close()
+		byteValue, _ := io.ReadAll(userFile)
+		json.Unmarshal(byteValue, &users)
+	}
+
+	tokenFile, err := os.Open("tokens.json")
+	if err == nil {
+		defer tokenFile.Close()
+		byteValue, _ := io.ReadAll(tokenFile)
+		json.Unmarshal(byteValue, &tokens)
+	}
+}
+
+func saveUsersAndTokens() {
+	userFile, _ := json.MarshalIndent(users, "", " ")
+	_ = os.WriteFile("users.json", userFile, 0644)
+
+	tokenFile, _ := json.MarshalIndent(tokens, "", " ")
+	_ = os.WriteFile("tokens.json", tokenFile, 0644)
+}
 
 func login(w http.ResponseWriter, r *http.Request) {
 	var loginCred struct {
@@ -72,6 +97,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(token)
 
 	tokens[user.Email] = token
+	saveUsersAndTokens()
 
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(token)
@@ -116,6 +142,7 @@ func signup(w http.ResponseWriter, r *http.Request) {
 
 	users = append(users, user)
 	fmt.Println(users)
+	saveUsersAndTokens()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
@@ -126,6 +153,8 @@ func logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	loadUsersAndTokens()
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /api/signup", signup)

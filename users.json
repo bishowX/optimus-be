@@ -1,0 +1,13 @@
+[
+ {
+  "id": "345",
+  "email": "bishow.pandey@test.com",
+  "first_name": "Bishow",
+  "middle_name": "",
+  "last_name": "Pandey",
+  "password": "secure123",
+  "roles": [
+   "editor"
+  ]
+ }
+]
