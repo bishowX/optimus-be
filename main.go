@@ -8,50 +8,22 @@ import (
 )
 
 type User struct {
-	Email      string `json:"email"`
-	FirstName  string `json:"first_name"`
-	MiddleName string `json:"middle_name"`
-	LastName   string `json:"last_name"`
-	Password   string `json:"password"`
+	Id         string   `json:"id"`
+	Email      string   `json:"email"`
+	FirstName  string   `json:"first_name"`
+	MiddleName string   `json:"middle_name"`
+	LastName   string   `json:"last_name"`
+	Password   string   `json:"password"`
+	Roles      []string `json:"roles"`
+}
+
+type Token struct {
+	Access  string `json:"access"`
+	Refresh string `json:"refresh"`
 }
 
 var users []User = []User{}
-
-func signup(w http.ResponseWriter, r *http.Request) {
-	var user User
-
-	err := json.NewDecoder(r.Body).Decode(&user)
-
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Invalid payload")
-		return
-	}
-
-	fmt.Println(user)
-
-	if user.Email == "" || user.Password == "" || user.FirstName == "" || user.LastName == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Invalid payload")
-		return
-	}
-
-	for i := 0; i < len(users); i++ {
-		if users[i].Email == user.Email {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "User already exists")
-			return
-		}
-	}
-
-	users = append(users, user)
-	fmt.Println(users)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
-}
-
-var tokens map[string]string = make(map[string]string)
+var tokens map[string]Token = make(map[string]Token)
 
 func login(w http.ResponseWriter, r *http.Request) {
 	var loginCred struct {
@@ -62,6 +34,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&loginCred)
 
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "email and password is required")
 		return
@@ -76,24 +49,76 @@ func login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	fmt.Println(user.Email)
-
 	if user.Email == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "email and password doesn't match")
+		fmt.Fprintf(w, "email and password don't match")
 		return
 	}
 
-	tokens[user.Email] = "12345"
+	accessToken, err := createAccessToken(user.Email, user.Roles)
+	refreshToken, err := createRefreshToken(user.Email)
 
-	res := map[string]string{
-		"refresh": tokens[user.Email],
-		"access":  tokens[user.Email],
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "failed to generate access token")
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
+	token := Token{
+		Refresh: refreshToken,
+		Access:  accessToken,
+	}
 
+	fmt.Println(token)
+
+	tokens[user.Email] = token
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(token)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func signup(w http.ResponseWriter, r *http.Request) {
+	var user User
+
+	err := json.NewDecoder(r.Body).Decode(&user)
+
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Invalid payload")
+		return
+	}
+
+	fmt.Println(user)
+
+	if user.Email == "" || user.Password == "" || user.FirstName == "" || user.LastName == "" {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Invalid payload")
+		return
+	}
+
+	for i := 0; i < len(users); i++ {
+		if users[i].Email == user.Email {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "User already exists")
+			return
+		}
+	}
+
+	user.Roles = []string{"editor"}
+	user.Id = "345"
+
+	users = append(users, user)
+	fmt.Println(users)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
 }
 
 func logout(w http.ResponseWriter, r *http.Request) {
