@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
@@ -11,7 +12,7 @@ const refreshTokenSecret = "should be secuere enough 2"
 
 func createAccessToken(email string, roles []string) (string, error) {
 	claims := jwt.MapClaims{
-		"exp":   time.Now().Add(time.Minute * 15).Unix(), // Token expires in 15 hours
+		"exp":   time.Now().Add(time.Minute * 15).Unix(), // Token expires in 15 minutes
 		"iat":   time.Now().Unix(),
 		"email": email,
 		"roles": roles,
@@ -40,4 +41,20 @@ func createRefreshToken(email string) (string, error) {
 	}
 
 	return tokenString, nil
+}
+
+func validateAccessToken(tokenString string) (string, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(accessTokenSecret), nil
+	})
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		email := claims["email"].(string)
+		return email, nil
+	} else {
+		return "", err
+	}
 }

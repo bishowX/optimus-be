@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 )
 
 type User struct {
@@ -26,28 +27,18 @@ type Token struct {
 var users []User = []User{}
 var tokens map[string]Token = make(map[string]Token)
 
-func loadUsersAndTokens() {
+func loadUsers() {
 	userFile, err := os.Open("users.json")
 	if err == nil {
 		defer userFile.Close()
 		byteValue, _ := io.ReadAll(userFile)
 		json.Unmarshal(byteValue, &users)
 	}
-
-	tokenFile, err := os.Open("tokens.json")
-	if err == nil {
-		defer tokenFile.Close()
-		byteValue, _ := io.ReadAll(tokenFile)
-		json.Unmarshal(byteValue, &tokens)
-	}
 }
 
-func saveUsersAndTokens() {
+func saveUsers() {
 	userFile, _ := json.MarshalIndent(users, "", " ")
 	_ = os.WriteFile("users.json", userFile, 0644)
-
-	tokenFile, _ := json.MarshalIndent(tokens, "", " ")
-	_ = os.WriteFile("tokens.json", tokenFile, 0644)
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +88,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(token)
 
 	tokens[user.Email] = token
-	saveUsersAndTokens()
+	saveUsers()
 
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(token)
@@ -142,7 +133,7 @@ func signup(w http.ResponseWriter, r *http.Request) {
 
 	users = append(users, user)
 	fmt.Println(users)
-	saveUsersAndTokens()
+	saveUsers()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
@@ -152,14 +143,52 @@ func logout(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "logged out")
 }
 
+func me(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Authorization header missing")
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	email, err := validateAccessToken(tokenString)
+
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Invalid token")
+		return
+	}
+
+	var user User
+	for i := 0; i < len(users); i++ {
+		if users[i].Email == email {
+			user = users[i]
+			break
+		}
+	}
+
+	if user.Email == "" {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "User not found")
+		return
+	}
+
+	user.Password = "" // Do not expose the password
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
+
 func main() {
-	loadUsersAndTokens()
+	loadUsers()
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /api/signup", signup)
 	mux.HandleFunc("POST /api/login", login)
 	mux.HandleFunc("/api/logout", logout)
+	mux.HandleFunc("/api/me", me)
 
 	fmt.Println("Starting server at :8080")
 	err := http.ListenAndServe(":8080", mux)
