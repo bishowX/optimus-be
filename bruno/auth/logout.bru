@@ -1,0 +1,19 @@
+meta {
+  name: logout
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{BASE_URL}}/logout
+  body: none
+  auth: bearer
+}
+
+headers {
+  X-Refresh-Token: {{refreshToken}}
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

@@ -1,0 +1,20 @@
+meta {
+  name: refresh
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{BASE_URL}}/refresh
+  body: none
+  auth: none
+}
+
+headers {
+  X-Refresh-Token: {{refreshToken}}
+}
+
+vars:post-response {
+  accessToken: res.body.access
+  refreshToken: res.body.refresh
+}

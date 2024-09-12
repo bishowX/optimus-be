@@ -42,8 +42,11 @@ func createRefreshToken(email string) (string, error) {
 
 	return tokenString, nil
 }
-
 func validateAccessToken(tokenString string) (string, error) {
+	if tokenString == "" {
+		return "", errors.New("token string is empty")
+	}
+
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
@@ -51,10 +54,44 @@ func validateAccessToken(tokenString string) (string, error) {
 		return []byte(accessTokenSecret), nil
 	})
 
+	if err != nil {
+		return "", err
+	}
+
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		email := claims["email"].(string)
+		email, ok := claims["email"].(string)
+		if !ok {
+			return "", errors.New("invalid token claims")
+		}
 		return email, nil
 	} else {
+		return "", errors.New("invalid token")
+	}
+}
+
+func validateRefreshToken(tokenString string) (string, error) {
+	if tokenString == "" {
+		return "", errors.New("token string is empty")
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(refreshTokenSecret), nil
+	})
+
+	if err != nil {
 		return "", err
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		email, ok := claims["email"].(string)
+		if !ok {
+			return "", errors.New("invalid token claims")
+		}
+		return email, nil
+	} else {
+		return "", errors.New("invalid token")
 	}
 }

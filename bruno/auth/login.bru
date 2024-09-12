@@ -1,0 +1,23 @@
+meta {
+  name: login
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{BASE_URL}}/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "bishow.pandey2@test.com",
+    "password": "secure_passwd@123"
+  }
+}
+
+vars:post-response {
+  accessToken: res.body.access
+  refreshToken: res.body.refresh
+}

@@ -25,7 +25,7 @@ type Token struct {
 }
 
 var users []User = []User{}
-var tokens map[string]Token = make(map[string]Token)
+var blackListedTokens []string = make([]string, 100)
 
 func loadUsers() {
 	userFile, err := os.Open("users.json")
@@ -37,8 +37,22 @@ func loadUsers() {
 }
 
 func saveUsers() {
-	userFile, _ := json.MarshalIndent(users, "", " ")
+	userFile, _ := json.Marshal(users)
 	_ = os.WriteFile("users.json", userFile, 0644)
+}
+
+func saveBlacklistedTokens() {
+	blackListedTokensFile, _ := json.Marshal(blackListedTokens)
+	_ = os.WriteFile("blacklisted-tokens.json", blackListedTokensFile, 0644)
+}
+
+func loadBlacklistedTokens() {
+	blackListedTokensFile, err := os.Open("blacklisted-tokens.json")
+	if err == nil {
+		defer blackListedTokensFile.Close()
+		byteValue, _ := io.ReadAll(blackListedTokensFile)
+		json.Unmarshal(byteValue, &blackListedTokens)
+	}
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
@@ -85,11 +99,6 @@ func login(w http.ResponseWriter, r *http.Request) {
 		Access:  accessToken,
 	}
 
-	fmt.Println(token)
-
-	tokens[user.Email] = token
-	saveUsers()
-
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(token)
 	if err != nil {
@@ -110,8 +119,6 @@ func signup(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Invalid payload")
 		return
 	}
-
-	fmt.Println(user)
 
 	if user.Email == "" || user.Password == "" || user.FirstName == "" || user.LastName == "" {
 		fmt.Println(err)
@@ -140,7 +147,108 @@ func signup(w http.ResponseWriter, r *http.Request) {
 }
 
 func logout(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	refreshTokenString := r.Header.Get("X-Refresh-Token")
+	if authHeader == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Authorization header missing")
+		return
+	}
+
+	if refreshTokenString == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "X-Refresh-Token header missing")
+		return
+	}
+
+	accessTokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	_, err := validateAccessToken(accessTokenString)
+
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Invalid Authorization token")
+		return
+	}
+
+	_, err = validateRefreshToken(refreshTokenString)
+
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Invalid X-Refresh-Token")
+		return
+	}
+
+	blackListedTokens = append(blackListedTokens, accessTokenString, refreshTokenString)
+	saveBlacklistedTokens()
+
 	fmt.Fprint(w, "logged out")
+}
+
+func refresh(w http.ResponseWriter, r *http.Request) {
+	oldRefreshTokenString := r.Header.Get("X-Refresh-Token")
+	if oldRefreshTokenString == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "X-Refresh-Token header missing")
+		return
+	}
+
+	email, err := validateRefreshToken(oldRefreshTokenString)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Invalid refresh token")
+		return
+	}
+
+	for i := 0; i < len(blackListedTokens); i++ {
+		if blackListedTokens[i] == oldRefreshTokenString {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, "Invalid refresh token")
+			return
+		}
+	}
+
+	var user User
+	for i := 0; i < len(users); i++ {
+		if users[i].Email == email {
+			user = users[i]
+			break
+		}
+	}
+
+	if user.Email == "" {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "User not found")
+		return
+	}
+
+	accessToken, err := createAccessToken(user.Email, user.Roles)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "failed to generate access token")
+		return
+	}
+
+	refreshToken, err := createRefreshToken(user.Email)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "failed to generate refresh token")
+		return
+	}
+
+	blackListedTokens = append(blackListedTokens, oldRefreshTokenString)
+	saveBlacklistedTokens()
+
+	token := Token{
+		Refresh: refreshToken,
+		Access:  accessToken,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(token)
+	if err != nil {
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func me(w http.ResponseWriter, r *http.Request) {
@@ -152,12 +260,27 @@ func me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	email, err := validateAccessToken(tokenString)
-
-	if err != nil {
+	if tokenString == "" {
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, "Invalid token")
 		return
+	}
+
+	email, err := validateAccessToken(tokenString)
+
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "Invalid token")
+		return
+	}
+
+	for i := 0; i < len(blackListedTokens); i++ {
+		if blackListedTokens[i] == tokenString {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, "Invalid token")
+			return
+		}
 	}
 
 	var user User
@@ -182,13 +305,15 @@ func me(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	loadUsers()
+	loadBlacklistedTokens()
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /api/signup", signup)
 	mux.HandleFunc("POST /api/login", login)
-	mux.HandleFunc("/api/logout", logout)
-	mux.HandleFunc("/api/me", me)
+	mux.HandleFunc("POST /api/logout", logout)
+	mux.HandleFunc("GET /api/me", me)
+	mux.HandleFunc("POST /api/refresh", refresh)
 
 	fmt.Println("Starting server at :8080")
 	err := http.ListenAndServe(":8080", mux)
