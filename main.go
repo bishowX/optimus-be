@@ -1,14 +1,10 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-
-	_ "github.com/joho/godotenv/autoload"
-	_ "github.com/lib/pq"
 )
 
 type User struct {
@@ -17,22 +13,6 @@ type User struct {
 	MiddleName string `json:"middle_name"`
 	LastName   string `json:"last_name"`
 	Password   string `json:"password"`
-}
-
-type Config struct {
-	DbName     string
-	DbUser     string
-	DbPassword string
-	DbHost     string
-	DbPort     string
-}
-
-var config Config = Config{
-	DbName:     os.Getenv("DB_NAME"),
-	DbUser:     os.Getenv("DB_USER"),
-	DbPassword: os.Getenv("DB_PASSWORD"),
-	DbHost:     os.Getenv("DB_HOST"),
-	DbPort:     os.Getenv("DB_PORT"),
 }
 
 var users []User = []User{}
@@ -71,60 +51,64 @@ func signup(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+var tokens map[string]string = make(map[string]string)
+
 func login(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "logged up")
+	var loginCred struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&loginCred)
+
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "email and password is required")
+		return
+	}
+
+	var user User
+
+	for i := 0; i < len(users); i++ {
+		if users[i].Email == loginCred.Email && users[i].Password == loginCred.Password {
+			user = users[i]
+			break
+		}
+	}
+
+	fmt.Println(user.Email)
+
+	if user.Email == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "email and password doesn't match")
+		return
+	}
+
+	tokens[user.Email] = "12345"
+
+	res := map[string]string{
+		"refresh": tokens[user.Email],
+		"access":  tokens[user.Email],
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+
 }
 
 func logout(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "logged out")
 }
 
-type Test struct {
-	id         int
-	name       string
-	created_at string
-}
-
-var psqlInfo string = fmt.Sprintf("host=%s port=%s user=%s "+
-	"password=%s dbname=%s sslmode=disable",
-	config.DbHost, config.DbPort, config.DbUser, config.DbPassword, config.DbName)
-
 func main() {
-	db, err := sql.Open("postgres", psqlInfo)
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	err = db.Ping()
-	if err != nil {
-		panic(err)
-	}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /api/signup", signup)
-	mux.HandleFunc("/api/login", login)
+	mux.HandleFunc("POST /api/login", login)
 	mux.HandleFunc("/api/logout", logout)
 
-	rows, err := db.Query("select * from test;")
-
-	if err != nil {
-		panic(err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var title Test
-		if err := rows.Scan(&title.id, &title.created_at, &title.name); err != nil {
-			panic(err)
-		}
-		fmt.Println(title.id, title.created_at, title.name)
-	}
-	if err := rows.Err(); err != nil {
-		panic(err)
-	}
-
 	fmt.Println("Starting server at :8080")
-	err = http.ListenAndServe(":8080", mux)
+	err := http.ListenAndServe(":8080", mux)
 	if err != nil {
 		fmt.Println("Error starting server: ", err)
 		os.Exit(1)
