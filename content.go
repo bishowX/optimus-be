@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +37,41 @@ type Content struct {
 	Author      string `json:"author"`
 	PublishedOn string `json:"published_on"`
 	UpdatedOn   string `json:"updated_on"`
+	Slug        string `json:"slug"`
+}
+
+func getUserByEmail(email string) (User, error) {
+	for _, user := range users {
+		if user.Email == email {
+			return user, nil
+		}
+	}
+	return User{}, errors.New("user not found")
+}
+
+func getUserFromJwt(r *http.Request) (User, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return User{}, errors.New("Authorization header missing")
+	}
+	accessTokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	email, err := validateAccessToken(accessTokenString)
+
+	if err != nil {
+		return User{}, err
+	}
+
+	var user User
+	user, err = getUserByEmail(email)
+	if err != nil {
+		return User{}, err
+	}
+
+	return user, nil
+}
+
+func generateSlug(title string) string {
+	return strings.ReplaceAll(strings.ToLower(title), " ", "-")
 }
 
 func createContent(w http.ResponseWriter, r *http.Request) {
@@ -48,16 +84,24 @@ func createContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validate the content
-	if content.Title == "" || content.Content == "" || content.Author == "" {
+	if content.Title == "" || content.Content == "" {
 		http.Error(w, "title, content, and author are required fields", http.StatusBadRequest)
 		return
 	}
+
+	// get user from jwt and return 401 if jwt is invalid
+	user, err := getUserFromJwt(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	content.Author = user.Email
 
 	// create the content
 	content.Id = uuid.New().String()
 	content.PublishedOn = time.Now().Format(time.RFC3339)
 	content.UpdatedOn = time.Now().Format(time.RFC3339)
-
+	content.Slug = generateSlug(content.Title)
 	saveContents(content)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -88,4 +132,10 @@ func getContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(content)
+}
+
+func getContents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(contents)
 }

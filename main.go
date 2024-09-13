@@ -24,6 +24,7 @@ func main() {
 	v1.HandleFunc("POST /auth/logout", logout)
 
 	v1.HandleFunc("POST /contents", createContent)
+	v1.HandleFunc("GET /contents", getContents)
 	v1.HandleFunc("GET /contents/{id}", getContent)
 	api := http.NewServeMux()
 	api.Handle("/v1/", http.StripPrefix("/v1", v1))
