@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -25,8 +27,16 @@ func main() {
 
 	mainRouter.Handle("/api/", http.StripPrefix("/api", api))
 
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:4173"},
+		AllowCredentials: true,
+		AllowedHeaders:   []string{"*"},
+		// Enable Debugging for testing, consider disabling in production
+		Debug: true,
+	})
+
 	fmt.Println("Starting server at :8080")
-	err := http.ListenAndServe(":8080", mainRouter)
+	err := http.ListenAndServe(":8080", c.Handler(mainRouter))
 	if err != nil {
 		fmt.Println("Error starting server: ", err)
 		os.Exit(1)
