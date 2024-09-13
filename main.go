@@ -11,6 +11,7 @@ import (
 func main() {
 	loadUsers()
 	loadBlacklistedTokens()
+	loadContents()
 
 	mainRouter := http.NewServeMux()
 
@@ -22,6 +23,8 @@ func main() {
 	v1.HandleFunc("POST /auth/refresh", refresh)
 	v1.HandleFunc("POST /auth/logout", logout)
 
+	v1.HandleFunc("POST /contents", createContent)
+	v1.HandleFunc("GET /contents/{id}", getContent)
 	api := http.NewServeMux()
 	api.Handle("/v1/", http.StripPrefix("/v1", v1))
 
