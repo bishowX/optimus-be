@@ -1,2 +1,6 @@
 .env
 optimus-be
+encore.gen.go
+encore.gen.cue
+/.encore
+/encore.gen
