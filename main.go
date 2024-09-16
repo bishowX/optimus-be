@@ -32,7 +32,7 @@ func main() {
 	mainRouter.Handle("/api/", http.StripPrefix("/api", api))
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:4173"},
+		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:4173", "https://optimus.bishow.xyz/"},
 		AllowCredentials: true,
 		AllowedHeaders:   []string{"*"},
 		// Enable Debugging for testing, consider disabling in production
