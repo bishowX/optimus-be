@@ -1,6 +1,8 @@
 .env
+
+# binary
 optimus-be
-encore.gen.go
-encore.gen.cue
-/.encore
-/encore.gen
+
+blacklisted-tokens.json
+users.json
+contents.json
